@@ -358,11 +358,11 @@ function find_R(pts, MB_edges, MB_triangles, MB_tetrahedra)
     while lo <= hi
         mid = (lo + hi) ÷ 2
         R = Rs[mid]
-        println("Trying candidate R = ", R)
-        flush(stdout)  # immediate output
+        #println("Trying candidate R = ", R)
+        #flush(stdout)  # immediate output
         simplex = cech(R, pts, MB_edges, MB_triangles, MB_tetrahedra)
-        println("Constructed Čech complex for R = ", R)
-        flush(stdout)
+        #println("Constructed Čech complex for R = ", R)
+        #flush(stdout)
         if R ≥ 0.6 #to big takes to long
             hi = mid - 1
             continue
@@ -432,32 +432,37 @@ end
 
 
 # FINDING OBSOLETE Points
+function filter_complex_by_vertices(complex, excluded::Set{Any})
+    new_complex = Dict{Int,Vector{Tuple}}()
+    for (k, simplices) in complex
+        # Keep simplices that do NOT contain any excluded vertex
+        new_complex[k] = [c for c in simplices if all(v -> !(v in excluded), c)]
+    end
+    return new_complex
+end
 function biggest_excluded(complex, excluded)
     N = length(complex[0])
     E_set = Vector{Vector{Int}}()
     biggest_excl = isempty(excluded) ? 0 : maximum(excluded)
     for n in (biggest_excl+1):N
         println(union(excluded, [n]))
-        excluded_n = union(excluded, [n])
+        excluded_n = union(Int.(excluded), [n])
         excluded_set = Set(excluded_n)
 
-        temp_complex = Dict((k - 1) => Vector{NTuple{k,Int}}() for k in 1:4)
-        temp_complex[0] = [c for c in complex[0]]# if !(c ∈ excluded_set)]
-        temp_complex[1] = [c for c in complex[1] if !any(v -> v ∈ excluded_set, c)]
-        temp_complex[2] = [c for c in complex[2] if !any(v -> v ∈ excluded_set, c)]
-        temp_complex[3] = [c for c in complex[3] if !any(v -> v ∈ excluded_set, c)]
+        temp_complex = filter_complex_by_vertices(complex, excluded_set)
+
         β = betti_numbers(temp_complex, 2)
         println(β)
-        if β[1] == (length(excluded_n) + 1) && β[2] == 0 && β[3] == 1
-            deeper = biggest_excluded(complex, union(excluded, [n]))
-            if deeper ≠ nothing
-                push!(E_set, deeper)
+        if β[1] == 1 && β[2] == 0 && β[3] == 1
+            deeper = biggest_excluded(temp_complex, excluded_n)
+            if deeper !== nothing
+                append!(E_set, deeper)
             else
                 push!(E_set, union(excluded, [n]))
             end
         end
     end
-    return isempty(E_set) ? nothing : E_set[argmax(length.(E_set))]
+    return isempty(E_set) ? nothing : E_set
 end
 function R_extra()
     pts = read_points("A_sensors_data.txt")
@@ -475,6 +480,24 @@ function R_extra()
     return be
 end
 
+function R_excluded(extra_points)
+    pts = read_points("A_sensors_data.txt")
+    MB_edges = MiniBall_edges(pts)
+    MB_triangles = MiniBall_triangles(pts)
+    MB_tetrahedra = MiniBall_tetrahedra(pts)
+    R = find_R(pts, MB_edges, MB_triangles, MB_tetrahedra)
+    println("R done")
+    pts2 = pts[setdiff(1:size(pts, 1), extra_points), :]
+    MB_edges = MiniBall_edges(pts2)
+    MB_triangles = MiniBall_triangles(pts2)
+    MB_tetrahedra = MiniBall_tetrahedra(pts2)
+    complex = complex = cech(R, pts2, MB_edges, MB_triangles, MB_tetrahedra)
+    println(betti_numbers(complex, 2))
+    println("rendering")
+    E = complex[1]
+    T = complex[2]
+    plot_edges_triangles(pts2, E, T)
+end
 
 
 
