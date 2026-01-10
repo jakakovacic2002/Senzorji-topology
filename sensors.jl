@@ -350,31 +350,19 @@ function covers_sphere(simplex)
 end
 function find_R(pts, MB_edges, MB_triangles, MB_tetrahedra)
     Rs = candidate_radii(MB_edges, MB_triangles, MB_tetrahedra)
-    println(length(Rs))
-    lo = 1
-    hi = length(Rs)
     answer = nothing
 
-    while lo <= hi
-        mid = (lo + hi) ÷ 2
-        R = Rs[mid]
+    for R in Rs
         #println("Trying candidate R = ", R)
         #flush(stdout)  # immediate output
         simplex = cech(R, pts, MB_edges, MB_triangles, MB_tetrahedra)
         #println("Constructed Čech complex for R = ", R)
         #flush(stdout)
-        if R ≥ 0.6 #to big takes to long
-            hi = mid - 1
-            continue
-        end
         if covers_sphere(simplex)
-            answer = R
-            hi = mid - 1  # try smaller radius
-        else
-            lo = mid + 1
+            return R
         end
     end
-    return answer
+    return nothing
 end
 
 function plot_edges_triangles(pts, edges, triangles)
@@ -655,12 +643,24 @@ function R_thomson()
 end
 
 
+
+
 #######
 #
 # Hole filling
 #
 #######
 function r_hole()
+    r_star = 0
+    repetitions = 10
+    for i in 1:repetitions
+        println(i)
+        pts = fibonacci_sphere(50)
+        refine_covering!(pts)
+        r = find_r(pts)
+        r_star += r
+    end
+    r_star = r_star / repetitions
     pts = fibonacci_sphere(50)
     refine_covering!(pts)
     r = find_r(pts)
@@ -669,9 +669,22 @@ function r_hole()
     E = VR(r, D)
     plot_edges(pts, E)
 
-    return r
+    return (r_star, r)
 end
 function R_hole()
+    R_star = 0
+    repetitions = 50
+    for i in 1:repetitions
+        println(i)
+        pts = fibonacci_sphere(50)
+        refine_covering!(pts)
+        MB_edges = MiniBall_edges(pts)
+        MB_triangles = MiniBall_triangles(pts)
+        MB_tetrahedra = MiniBall_tetrahedra(pts)
+        R = find_R(pts, MB_edges, MB_triangles, MB_tetrahedra)
+        R_star += R
+    end
+    R_star = R_star / repetitions
     pts = fibonacci_sphere(50)
     refine_covering!(pts)
     MB_edges = MiniBall_edges(pts)
@@ -682,7 +695,7 @@ function R_hole()
     E = complex[1]
     T = complex[2]
     plot_edges_triangles(pts, E, T)
-    return R
+    return (R_star, R)
 end
 
 
