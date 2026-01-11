@@ -350,8 +350,6 @@ function covers_sphere(simplex)
 end
 function find_R(pts, MB_edges, MB_triangles, MB_tetrahedra)
     Rs = candidate_radii(MB_edges, MB_triangles, MB_tetrahedra)
-    answer = nothing
-
     for R in Rs
         #println("Trying candidate R = ", R)
         #flush(stdout)  # immediate output
@@ -388,15 +386,53 @@ function plot_edges_triangles(pts, edges, triangles)
 
     # Triangles (filled)
     for (i, j, k) in triangles
-        poly!(ax, Point3f[pts[i, :], pts[j, :], pts[k, :],], color=RGBA(1.0, 0.6, 0.2, 0.35), transparency=true)
+        poly!(ax, Point3f[pts[i, :], pts[j, :], pts[k, :],], color=RGBA(1.0, 0.6, 0.2, 0.6), transparency=true)
     end
 
     display(fig)
 end
 
 
+##################
+#
+#REPORT RENDERING
+#
+#
+#################
 
 
+function plot_save(pts::Matrix{Float64}, edges, triangles; filename="output.png")
+    # Convert points to Float32 tuples
+    pts3f = [(Float32(pts[i,1]), Float32(pts[i,2]), Float32(pts[i,3])) for i in 1:size(pts,1)]
+
+    # Create a Scene directly, not via Figure/Axis3
+    scene = Scene(resolution = (800, 800), camera = campixel!)
+
+    # Add points
+    scatter!(scene, pts3f, color=:red, markersize=10)
+
+    # Add edges
+    for (i,j) in edges
+        lines!(scene, [pts3f[i], pts3f[j]], color=:black, linewidth=2)
+    end
+
+    # Add triangles (filled)
+    for (i,j,k) in triangles
+        poly!(scene, [pts3f[i], pts3f[j], pts3f[k]], color=RGBA(1.0f0, 0.5f0, 0.0f0, 0.8f0))
+    end
+
+    # Set camera position directly
+    cam3d!(scene,
+           eyeposition = (0f0, 0f0, 0f0),  # negative Z, slightly +Y
+           lookat      = (0f0, 0f0, 0f0),
+           up          = (0f0, 1f0, 0f0))
+
+    # Force render before saving
+    display(scene)  # ensures the camera is applied
+
+    # Save the scene exactly from this angle
+    save(filename, scene)
+end
 
 
 ##################
@@ -652,18 +688,19 @@ end
 #######
 function r_hole()
     r_star = 0
-    repetitions = 10
-    for i in 1:repetitions
+    repetitions = 1
+    for i in 1:(repetitions-1)
         println(i)
         pts = fibonacci_sphere(50)
         refine_covering!(pts)
         r = find_r(pts)
         r_star += r
     end
-    r_star = r_star / repetitions
     pts = fibonacci_sphere(50)
     refine_covering!(pts)
     r = find_r(pts)
+    r_star += r
+    r_star = r_star / repetitions
     D = distance_table(pts)
     #V = collect(1:(size(pts,1)))
     E = VR(r, D)
@@ -673,8 +710,8 @@ function r_hole()
 end
 function R_hole()
     R_star = 0
-    repetitions = 50
-    for i in 1:repetitions
+    repetitions = 1
+    for i in 1:(repetitions-1)
         println(i)
         pts = fibonacci_sphere(50)
         refine_covering!(pts)
@@ -684,13 +721,14 @@ function R_hole()
         R = find_R(pts, MB_edges, MB_triangles, MB_tetrahedra)
         R_star += R
     end
-    R_star = R_star / repetitions
     pts = fibonacci_sphere(50)
     refine_covering!(pts)
     MB_edges = MiniBall_edges(pts)
     MB_triangles = MiniBall_triangles(pts)
     MB_tetrahedra = MiniBall_tetrahedra(pts)
     R = find_R(pts, MB_edges, MB_triangles, MB_tetrahedra)
+    R_star += R
+    R_star = R_star / repetitions
     complex = cech(R, pts, MB_edges, MB_triangles, MB_tetrahedra)
     E = complex[1]
     T = complex[2]
