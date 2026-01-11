@@ -195,63 +195,15 @@ function cech_filtration(points::Vector{Vector{Float64}})
     return filtration
 end
 
-# function r_complex(filtration, r)
-#     complex = Vector{Vector{Int}}()
-#     for (simplex, r_s) in filtration
-#         if r_s <= r
-#             push!(complex, simplex)
-#         end
-#     end
-
-#     return complex
-# end
-
-# function is_connected_complex(complex::Vector{Vector{Int}})
-#     # collect vertices
-#     vertices = Set{Int}()
-#     for simplex in complex
-#         for v in simplex
-#             push!(vertices, v)
-#         end
-#     end
-
-#     if isempty(vertices)
-#         return false
-#     end
-
-#     # adjacency list
-#     adj = Dict{Int, Set{Int}}()
-#     for v in vertices
-#         adj[v] = Set{Int}()
-#     end
-
-#     # add edges (1-simplices)
-#     for simplex in complex
-#         if length(simplex) == 2
-#             a, b = simplex
-#             push!(adj[a], b)
-#             push!(adj[b], a)
-#         end
-#     end
-
-#     # DFS
-#     visited = Set{Int}()
-#     stack = [first(vertices)]
-
-#     while !isempty(stack)
-#         v = pop!(stack)
-#         if v ∉ visited
-#             push!(visited, v)
-#             for u in adj[v]
-#                 if u ∉ visited
-#                     push!(stack, u)
-#                 end
-#             end
-#         end
-#     end
-
-#     return length(visited) == length(vertices)
-# end
+function maximal_complex_at_r(filtration, r_value)
+    # Filter filtration to only include simplices with radius <= r_value
+    complex_at_r = [simplex for (simplex, r) in filtration if r <= r_value]
+    
+    # Find maximal simplices
+    max_simplices = find_maximal_simplices(complex_at_r)
+    
+    return max_simplices
+end
 
 function simplex_boundary(sx)
     # determine the codimension 1 simplices in the boundary of the simplex sx
@@ -498,7 +450,6 @@ function smallest_r(filtration)
 end
 
 function find_sphere_r(filtration, p=0)
-    r_values = Float64[]
     complex_at_r = Vector{Vector{Int}}()
     prev_r = -1.0
     
@@ -517,7 +468,7 @@ function find_sphere_r(filtration, p=0)
             # Check if Betti numbers are [1, 0, 1] (sphere topology)
             if length(betti) >= 3 && betti[1] == 1 && betti[2] == 0 && betti[3] == 1
                 println("Found sphere topology (β₀=1, β₁=0, β₂=1) at R = $prev_r")
-                push!(r_values, prev_r)
+                return prev_r
             end
         end
         
@@ -534,32 +485,61 @@ function find_sphere_r(filtration, p=0)
         
         if length(betti) >= 3 && betti[1] == 1 && betti[2] == 0 && betti[3] == 1
             println("Found sphere topology (β₀=1, β₁=0, β₂=1) at R = $prev_r")
-            push!(r_values, prev_r)
+            return prev_r
         end
     end
     
-    if isempty(r_values)
-        println("No complex with sphere topology (β₀=1, β₁=0, β₂=1) found")
-    end
-    
-    return r_values
+    println("No complex with sphere topology (β₀=1, β₁=0, β₂=1) found")
+    return nothing
 end
 
 # Helper function to find maximal simplices from a list of all simplices
 function find_maximal_simplices(simplices)
-    maximal = Vector{Vector{Int}}()
+    # Optimization: group simplices by dimension
+    by_dim = Dict{Int, Vector{Vector{Int}}}()
+    max_dim = 0
     
-    for s1 in simplices
-        is_maximal = true
-        for s2 in simplices
-            # Check if s1 is a proper subset of s2
-            if length(s1) < length(s2) && all(v in s2 for v in s1)
-                is_maximal = false
-                break
-            end
+    for s in simplices
+        dim = length(s)
+        max_dim = max(max_dim, dim)
+        if !haskey(by_dim, dim)
+            by_dim[dim] = Vector{Vector{Int}}()
         end
-        if is_maximal
-            push!(maximal, s1)
+        push!(by_dim[dim], s)
+    end
+    
+    # Start with highest dimensional simplices (always maximal)
+    maximal = Vector{Vector{Int}}()
+    if haskey(by_dim, max_dim)
+        append!(maximal, by_dim[max_dim])
+    end
+    
+    # Check lower dimensions only if not contained in higher dimensions
+    for dim in (max_dim-1):-1:1
+        if !haskey(by_dim, dim)
+            continue
+        end
+        
+        for s1 in by_dim[dim]
+            is_maximal = true
+            # Only check against higher dimensional simplices
+            for higher_dim in (dim+1):max_dim
+                if !haskey(by_dim, higher_dim)
+                    continue
+                end
+                for s2 in by_dim[higher_dim]
+                    if all(v in s2 for v in s1)
+                        is_maximal = false
+                        break
+                    end
+                end
+                if !is_maximal
+                    break
+                end
+            end
+            if is_maximal
+                push!(maximal, s1)
+            end
         end
     end
     
@@ -567,6 +547,80 @@ function find_maximal_simplices(simplices)
 end
 
 function plot_sphere_with_points_web(pts, edges, r)
+    fig = Figure(size=(800, 800))
+    ax = Axis3(fig[1,1], aspect=:data)
+
+    # Sphere mesh
+    θ = range(0, 2π, length=80)
+    φ = range(0, π, length=40)
+    x = [sin(phi)*cos(th) for phi in φ, th in θ]
+    y = [sin(phi)*sin(th) for phi in φ, th in θ]
+    z = [cos(phi) for phi in φ, th in θ]
+
+    # Make sphere transparent
+    # surface!(ax, x, y, z, color=RGBA(0.5, 0.7, 1.0, 0.2), transparency=true)
+
+    # Extract coordinates from vector of vectors
+    pts_x = [p[1] for p in pts]
+    pts_y = [p[2] for p in pts]
+    pts_z = [p[3] for p in pts]
+    
+    # Points
+    scatter!(ax, pts_x, pts_y, pts_z, color=RGBA(1,0,0,1), markersize=15)
+
+    # Draw filled circles around each point on the sphere
+    for p in pts
+        # Normalize to get point on unit sphere
+        p_norm = p / norm(p)
+        
+        # Find two orthogonal vectors perpendicular to p_norm
+        if abs(p_norm[3]) < 0.9
+            v1 = cross(p_norm, [0.0, 0.0, 1.0])
+        else
+            v1 = cross(p_norm, [1.0, 0.0, 0.0])
+        end
+        v1 = v1 / norm(v1)
+        v2 = cross(p_norm, v1)
+        v2 = v2 / norm(v2)
+        
+        # Generate circle on sphere surface with radial segments for filling
+        n_angles = 50
+        angles = range(0, 2π, length=n_angles)
+        n_radial = 20
+        radial_steps = range(0, r, length=n_radial)
+        
+        # Create mesh points
+        mesh_x = []
+        mesh_y = []
+        mesh_z = []
+        
+        for rad in radial_steps
+            for angle in angles
+                local_pt = cos(rad) * p_norm + sin(rad) * (cos(angle) * v1 + sin(angle) * v2)
+                push!(mesh_x, local_pt[1])
+                push!(mesh_y, local_pt[2])
+                push!(mesh_z, local_pt[3])
+            end
+        end
+        
+        # Reshape for surface plot
+        mesh_x_mat = reshape(mesh_x, n_angles, n_radial)
+        mesh_y_mat = reshape(mesh_y, n_angles, n_radial)
+        mesh_z_mat = reshape(mesh_z, n_angles, n_radial)
+        
+        surface!(ax, mesh_x_mat, mesh_y_mat, mesh_z_mat, color=RGBA(1.0, 0.5, 0.0, 1.0), shading=false)
+    end
+
+    # Edges
+    for edge in edges
+        i, j = edge[1], edge[2]
+        lines!(ax, [pts[i][1], pts[j][1]], [pts[i][2], pts[j][2]], [pts[i][3], pts[j][3]], color=:black, linewidth=2)
+    end
+
+    fig
+end
+
+function plot_sphere_with_points(pts, r)
     fig = Figure(size=(800, 800))
     ax = Axis3(fig[1,1], aspect=:data)
 
@@ -628,16 +682,136 @@ function plot_sphere_with_points_web(pts, edges, r)
         mesh_y_mat = reshape(mesh_y, n_angles, n_radial)
         mesh_z_mat = reshape(mesh_z, n_angles, n_radial)
         
-        surface!(ax, mesh_x_mat, mesh_y_mat, mesh_z_mat, color=RGBA(1.0, 0.5, 0.0, 0.8))
-    end
-
-    # Edges
-    for edge in edges
-        i, j = edge[1], edge[2]
-        lines!(ax, [pts[i][1], pts[j][1]], [pts[i][2], pts[j][2]], [pts[i][3], pts[j][3]], color=:black, linewidth=2)
+        surface!(ax, mesh_x_mat, mesh_y_mat, mesh_z_mat, color=RGBA(1.0, 0.5, 0.0, 1.0), transparency=true, shading=false)
+        
+        # Draw black outline at the boundary of the circle
+        outline_x = Float64[]
+        outline_y = Float64[]
+        outline_z = Float64[]
+        for angle in angles
+            local_pt = cos(r) * p_norm + sin(r) * (cos(angle) * v1 + sin(angle) * v2)
+            push!(outline_x, local_pt[1])
+            push!(outline_y, local_pt[2])
+            push!(outline_z, local_pt[3])
+        end
+        lines!(ax, outline_x, outline_y, outline_z, color=:black, linewidth=2)
     end
 
     fig
 end
 
+# REMOVE POINTS
 
+function find_max_redundant_points_maximal(max_complex, n_points, p=0)
+    println("Starting with $(length(max_complex)) maximal simplices")
+    
+    redundant_sets = Vector{Vector{Int}}[]
+    
+    # Try removing k points for k = 1, 2, 3, ...
+    for k in 1:(n_points-4)  # Need at least 4 points for a 2-sphere
+        println("Trying to remove $k points...")
+        
+        # Generate all combinations of k points to remove
+        vertices = collect(1:n_points)
+        
+        # Collect all valid combinations for this k
+        valid_combinations = collect_valid_combinations(max_complex, vertices, k, p)
+        
+        if !isempty(valid_combinations)
+            redundant_sets = valid_combinations
+            println("✓ Can remove $k points while maintaining sphere topology")
+            println("  Found $(length(valid_combinations)) valid combination(s)")
+        else
+            println("✗ Cannot remove $k points")
+            break  # If we can't remove k points, we can't remove k+1 either
+        end
+    end
+    
+    return redundant_sets
+end
+
+function collect_valid_combinations(max_complex, vertices, k, p)
+    valid_combos = Vector{Vector{Int}}()
+    collect_combinations_recursive(max_complex, vertices, k, Int[], 1, p, valid_combos)
+    return valid_combos
+end
+
+function collect_combinations_recursive(max_complex, vertices, k, removed, start_idx, p, valid_combos)
+    # Check topology after each removal
+    if !isempty(removed)
+        # Build new maximal complex directly
+        new_max_complex = Vector{Vector{Int}}()
+        boundary_faces = Vector{Vector{Int}}()
+        
+        # Separate simplices: kept vs deleted
+        for simplex in max_complex
+            if any(v in removed for v in simplex)
+                # This simplex contains a removed vertex - generate boundary faces
+                for i in 1:length(simplex)
+                    face = [simplex[1:i-1]..., simplex[i+1:end]...]
+                    # Only consider faces that don't contain removed vertices
+                    if !isempty(face) && !any(v in removed for v in face)
+                        if !(face in boundary_faces)
+                            push!(boundary_faces, face)
+                        end
+                    end
+                end
+            else
+                # Keep this simplex (it's still maximal)
+                push!(new_max_complex, simplex)
+            end
+        end
+        
+        # Add boundary faces that are NOT subsets of kept simplices
+        for face in boundary_faces
+            is_maximal = true
+            for kept_simplex in new_max_complex
+                # Check if face is a proper subset of kept_simplex
+                if length(face) < length(kept_simplex) && all(v in kept_simplex for v in face)
+                    is_maximal = false
+                    break
+                end
+            end
+            if is_maximal
+                push!(new_max_complex, face)
+            end
+        end
+        
+        if isempty(new_max_complex)
+            return  # Topology broken, stop this branch
+        end
+        
+        # Convert to tuple format and check Betti numbers
+        max_scx = [Tuple(s) for s in new_max_complex]
+        betti = betti_numbers(max_scx, p)
+        
+        # Check if it's still a sphere (β₀=1, β₁=0, β₂=1)
+        if !(length(betti) >= 3 && betti[1] == 1 && betti[2] == 0 && betti[3] == 1)
+            return  # Topology broken, stop this branch
+        end
+        
+        # If we've removed k points and topology is still good, save this combination!
+        if length(removed) == k
+            push!(valid_combos, copy(removed))
+            return
+        end
+    end
+    
+    # Base case: we've successfully removed k points
+    if length(removed) == k
+        return
+    end
+    
+    # Recursive case: try adding each remaining vertex to removed set
+    for i in start_idx:length(vertices)
+        push!(removed, vertices[i])
+        collect_combinations_recursive(max_complex, vertices, k, removed, i+1, p, valid_combos)
+        pop!(removed)
+    end
+end
+
+# Call this to get the minimal R value
+function get_r(points)
+    filtration = cech_filtration(points)
+    return find_sphere_r(filtration)
+end
