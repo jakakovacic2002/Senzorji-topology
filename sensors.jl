@@ -766,3 +766,208 @@ function R_hole_preset()
     plot_edges_triangles(pts, E, T)
     return R
 end
+
+
+
+
+
+#################################
+#
+#END OF SENSORS
+#
+#Presentation part 1
+#
+#################################
+
+function plot_sphere_with_points(ptsM, r)
+    pts = [vec(ptsM[i, :]) for i in 1:size(ptsM, 1)]
+    fig = Figure(size=(800, 800))
+    ax = Axis3(fig[1,1], aspect=:data)
+
+    # Sphere mesh
+    θ = range(0, 2π, length=80)
+    φ = range(0, π, length=40)
+    x = [sin(phi)*cos(th) for phi in φ, th in θ]
+    y = [sin(phi)*sin(th) for phi in φ, th in θ]
+    z = [cos(phi) for phi in φ, th in θ]
+
+    # Make sphere transparent
+    surface!(ax, x, y, z, color=RGBA(0.5, 0.7, 1.0, 1.0), transparency=false)
+
+    # Extract coordinates from vector of vectors
+    pts_x = [p[1] for p in pts]
+    pts_y = [p[2] for p in pts]
+    pts_z = [p[3] for p in pts]
+    
+    # Points
+    scatter!(ax, pts_x, pts_y, pts_z, color=RGBA(1,0,0,1), markersize=15)
+
+    # Draw filled circles around each point on the sphere
+    for p in pts
+        # Normalize to get point on unit sphere
+        p_norm = p / norm(p)
+        
+        # Find two orthogonal vectors perpendicular to p_norm
+        if abs(p_norm[3]) < 0.9
+            v1 = cross(p_norm, [0.0, 0.0, 1.0])
+        else
+            v1 = cross(p_norm, [1.0, 0.0, 0.0])
+        end
+        v1 = v1 / norm(v1)
+        v2 = cross(p_norm, v1)
+        v2 = v2 / norm(v2)
+        
+        # Generate circle on sphere surface with radial segments for filling
+        n_angles = 50
+        angles = range(0, 2π, length=n_angles)
+        n_radial = 20
+        radial_steps = range(0, r, length=n_radial)
+        
+        # Create mesh points
+        mesh_x = []
+        mesh_y = []
+        mesh_z = []
+        
+        for rad in radial_steps
+            for angle in angles
+                local_pt = cos(rad) * p_norm + sin(rad) * (cos(angle) * v1 + sin(angle) * v2)
+                push!(mesh_x, local_pt[1])
+                push!(mesh_y, local_pt[2])
+                push!(mesh_z, local_pt[3])
+            end
+        end
+        
+        # Reshape for surface plot
+        mesh_x_mat = reshape(mesh_x, n_angles, n_radial)
+        mesh_y_mat = reshape(mesh_y, n_angles, n_radial)
+        mesh_z_mat = reshape(mesh_z, n_angles, n_radial)
+        
+        surface!(ax, mesh_x_mat, mesh_y_mat, mesh_z_mat, color=RGBA(1.0, 0.5, 0.0, 1.0), transparency=true, shading=false)
+        
+        # Draw black outline at the boundary of the circle
+        outline_x = Float64[]
+        outline_y = Float64[]
+        outline_z = Float64[]
+        for angle in angles
+            local_pt = cos(r) * p_norm + sin(r) * (cos(angle) * v1 + sin(angle) * v2)
+            push!(outline_x, local_pt[1])
+            push!(outline_y, local_pt[2])
+            push!(outline_z, local_pt[3])
+        end
+        lines!(ax, outline_x, outline_y, outline_z, color=:black, linewidth=2)
+    end
+
+    fig
+end
+
+println("starting normal")
+pts1=read_points("A_sensors_data.txt")
+r1 = find_r(pts1)
+E1 = VR(r1, distance_table(pts1))
+
+MB_edges1 = MiniBall_edges(pts1)
+MB_triangles1 = MiniBall_triangles(pts1)
+MB_tetrahedra1 = MiniBall_tetrahedra(pts1)
+R1 = find_R(pts1, MB_edges1, MB_triangles1, MB_tetrahedra1)
+complex1 = cech(R1, pts1, MB_edges1, MB_triangles1, MB_tetrahedra1)
+E1_ = complex1[1]
+T1 = complex1[2]
+
+println("starting fibonacci")
+pts2 = fibonacci_sphere(50)
+r2 = find_r(pts2)
+E2 = VR(r2, distance_table(pts2))
+
+MB_edges2 = MiniBall_edges(pts2)
+MB_triangles2 = MiniBall_triangles(pts2)
+MB_tetrahedra2 = MiniBall_tetrahedra(pts2)
+R2 = find_R(pts2, MB_edges2, MB_triangles2, MB_tetrahedra2)
+complex2 = cech(R2, pts2, MB_edges2, MB_triangles2, MB_tetrahedra2)
+E2_ = complex2[1]
+T2 = complex2[2]
+
+println("starting thomson")
+pts3 = fibonacci_sphere(50)
+relax_on_sphere!(pts3)
+println("points done")
+r3 = find_r(pts3)
+E3 = VR(r3, distance_table(pts3))
+
+MB_edges3 = MiniBall_edges(pts3)
+MB_triangles3 = MiniBall_triangles(pts3)
+MB_tetrahedra3 = MiniBall_tetrahedra(pts3)
+R3 = find_R(pts3, MB_edges3, MB_triangles3, MB_tetrahedra3)
+complex3 = cech(R3, pts3, MB_edges3, MB_triangles3, MB_tetrahedra3)
+E3_ = complex3[1]
+T3 = complex3[2]
+
+println("starting random")
+pts4 = fibonacci_sphere(50)
+refine_covering!(pts4)
+println("points done")
+r4 = find_r(pts4)
+E4 = VR(r4, distance_table(pts4))
+
+MB_edges4 = MiniBall_edges(pts4)
+MB_triangles4 = MiniBall_triangles(pts4)
+MB_tetrahedra4 = MiniBall_tetrahedra(pts4)
+R4 = find_R(pts4, MB_edges4, MB_triangles4, MB_tetrahedra4)
+complex4 = cech(R4, pts4, MB_edges4, MB_triangles4, MB_tetrahedra4)
+E4_ = complex4[1]
+T4 = complex4[2]
+
+
+
+complex5 = cech(R4, pts1, MB_edges1, MB_triangles1, MB_tetrahedra1)
+E5_ = complex5[1]
+T5 = complex5[2]
+
+
+
+function plot1()#plot points
+    plot_edges(pts1, [])
+end
+function plot2()#plot network
+    println("r = ", r1)
+    plot_edges(pts1, E1)
+end
+function plot3()#plot complex
+    println("R = ", R1)
+    plot_edges_triangles(pts1, E1_, T1)
+end
+
+function plot4()#plot covering
+    plot_sphere_with_points(pts1, R1)
+end
+
+function plot5()#plot covering with R4 a slightly smaller R
+    plot_sphere_with_points(pts1, R4)
+end
+
+function plot6()#plot complex a bit smaller
+    println("complex with a smaller R")
+    plot_edges_triangles(pts1, E5_, T5)
+end
+
+function plot7() #plot fibbonaci points and edges
+    println("Fibbonacci lattice r = ", r2)
+    plot_edges(pts2, E2)
+end
+function plot8() #plot fibbonaci complex
+    println("Fibbonacci lattice R = ", R2)
+    plot_edges_triangles(pts2, E2_, T2)
+end
+#plot_edges(pts3, E3)
+function plot9() #plot Thomson complex
+    println("Thomson simulation r = ", r3)
+    println("Thomson simulation R = ", R3)
+    plot_edges_triangles(pts3, E3_, T3)
+end
+#plot_edges(pts4, E4)
+function plot10() #plot hole filling complex
+    println("Randomized hole filling r = ", r4)
+    println("Randomized hole filling R = ", R4)
+    plot_edges_triangles(pts4, E4_, T4)
+end
+
+
